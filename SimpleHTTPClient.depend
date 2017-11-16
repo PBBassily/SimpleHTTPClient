@@ -14,3 +14,22 @@
 	<sys/socket.h>
 	<arpa/inet.h>
 
+1510845402 source:/home/paula/Documents/codeblocks_ws/SimpleHTTPClient/main.cpp
+	<iostream>
+	<stdio.h>
+	<stdlib.h>
+	<unistd.h>
+	<errno.h>
+	<string.h>
+	<vector>
+	<fstream>
+	<netdb.h>
+	<sys/types.h>
+	<netinet/in.h>
+	<sys/socket.h>
+	<arpa/inet.h>
+	<sstream>
+	<sys/stat.h>
+	<sys/sendfile.h>
+	<fcntl.h>
+

@@ -14,10 +14,15 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-
 #include <arpa/inet.h>
+#include <sstream>
+#include <sys/stat.h>
+#include <sys/sendfile.h>
+#include <fcntl.h>
 
 #define MAXDATASIZE 1000 // max number of bytes we can get at once
+
+#define FILE_NOT_FOUND_DESC -1
 
 using namespace std;
 // get sockaddr, IPv4 or IPv6:
@@ -62,7 +67,7 @@ vector<string> parse_line(string temp)
     return data;
 }
 
-/*void save_get_file(char buffer[])
+void save_get_file(char buffer[])
 {
 
     int length = strlen(buffer);
@@ -80,7 +85,7 @@ vector<string> parse_line(string temp)
         s.erase(0, pos + delimiter.length());
     }
     std::cout << s << std::endl;
-}*/
+}
 
 bool check_response(char buffer[])
 {
@@ -102,7 +107,8 @@ bool check_response(char buffer[])
                 return true;
             }
             line = "";
-        }else
+        }
+        else
             line+=buffer[i];
 
     }
@@ -125,6 +131,26 @@ char* read_post_file(string name)
     return cstr;
 
 }
+
+long get_file_size(int fd)
+{
+    struct stat stat_buf;
+    int rc = fstat(fd, &stat_buf);
+    return rc == 0 ? stat_buf.st_size : -1;
+}
+
+/**
+    @param file path
+    @return file descriptor
+*/
+int get_file_descriptor(string file_name)
+{
+    char *cstr = new char[file_name.length() + 1];
+    strcpy(cstr, file_name.c_str());
+    return open(cstr, O_RDONLY);
+}
+
+
 /**
     this function read the input file and parse it
 
@@ -166,13 +192,33 @@ void read_input_file(int sockfd)
 
             printf("client: received '%s'\n",buf);
 
-            char * cstr_post = read_post_file(data[1]);
-            cout << "\n"<<cstr_post;
+            /////////////////////////////////////////////////////////////////////////////
 
-            if (send(sockfd,cstr_post, strlen(cstr_post), 0) == -1)
-                perror("send");
+            string file_name = data[1];
+            //file_name.erase(0,1);
+            cout << "requested file : "<<file_name<<endl;
 
-            cout<<"post"<<"\n";
+            int fd = get_file_descriptor (file_name);
+            cout << "file descriptor : "<<fd<<endl;
+            if(fd!=FILE_NOT_FOUND_DESC)
+            {
+                // file is found
+
+                long file_size = get_file_size(fd);
+                cout << "file size : "<<file_size<<endl;
+
+                off_t offset = 0;
+                int remain_data = file_size;
+                size_t sent_bytes = 0;
+                /* Sending file data */
+                while (((sent_bytes = sendfile(sockfd, fd, &offset, MAXDATASIZE)) > 0) && (remain_data > 0))
+                {
+                    remain_data -= sent_bytes;
+                    fprintf(stdout, " sent  = %d bytes, offset : %d, remaining data = %d\n",
+                            sent_bytes, offset, remain_data);
+                }
+
+            }
         }
         else if((data[0].compare("GET")) == 0)
         {
@@ -192,7 +238,7 @@ void read_input_file(int sockfd)
             // receive the get
             int numbytes;
             char buf[MAXDATASIZE];
-            if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1)
+            if ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) == -1)
             {
                 perror("recv");
                 exit(1);
@@ -205,8 +251,31 @@ void read_input_file(int sockfd)
             if(check_response(buf))
             {
                 cout<<"****************************************************";
-                save_get_file(buf);
-            }else{
+                FILE * recieved_file ;
+                string path = data[1];
+                char *file_name = new char[path.length() + 1];
+                strcpy(file_name, path.c_str());
+
+                recieved_file = fopen(file_name, "w");
+
+                if (recieved_file == NULL)
+                {
+                    fprintf(stderr, "Failed to open file foo --> %s\n", strerror(errno));
+
+                    exit(EXIT_FAILURE);
+                }
+
+                int numbytes ;
+                while ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) > 0)
+                {
+                    fwrite(buf, sizeof(char), numbytes, recieved_file);
+                    //remain_data -= len;
+                    fprintf(stdout, "Receive %d bytes\n", numbytes);
+                }
+                fclose(recieved_file);
+            }
+            else
+            {
                 cout<<"////////////////////////////////////////////////////";
             }
 
@@ -231,17 +300,17 @@ int main(int argc, char *argv[])
     char s[INET6_ADDRSTRLEN];
     //string port_number = argv[2];
 
-   /* if (argc != 3)
-    {
-        fprintf(stderr,"usage: client server_iP port_number\n");
-        exit(1);
-    }*/
+    /* if (argc != 3)
+     {
+         fprintf(stderr,"usage: client server_iP port_number\n");
+         exit(1);
+     }*/
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    if ((rv = getaddrinfo("192.168.1.50", "3490", &hints, &servinfo)) != 0)
+    if ((rv = getaddrinfo("127.0.0.1","3490", &hints, &servinfo)) != 0)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;

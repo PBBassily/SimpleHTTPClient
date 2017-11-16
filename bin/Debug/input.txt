@@ -1,2 +1,1 @@
-GET post.html host-name (port-number)
-GET post2.txt host-name (port-number)
+POST post.html host-name (port-number)
