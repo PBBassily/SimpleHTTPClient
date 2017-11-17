@@ -151,6 +151,9 @@ int get_file_descriptor(string file_name)
 }
 
 
+
+
+
 /**
     this function read the input file and parse it
 
@@ -163,14 +166,34 @@ void read_input_file(int sockfd)
     {
         vector<string> data = parse_line(str);
 
-        cout<<"data[1]:"<<data[1]<<"\n";
+        cout<<"data[1]: "<<data[1]<<"\n";
+
+
 
         if((data[0].compare("POST")) == 0)
         {
-            // create a reply post request
-            string reply = "POST /"+data[1]+" http/1.1\r\n";
+    ///////////////////////////////////////////////////////////////////////////////////////
+            string file_name = data[1];
 
-            cout<< reply<<"\n";
+            int fd = get_file_descriptor (file_name);
+
+            long file_size = get_file_size(fd);
+
+            cout << "file size : "<<file_size<<endl;
+
+
+
+            // create a reply post request
+            stringstream  ss;
+            ss.str("");
+            ss<<"POST /";
+            ss<<data[1];
+            ss<<" http/1.1\r\n";
+            ss<<"Content-Length: " ;
+            ss<<file_size;
+            ss<<"\r\n";
+            string reply = ss.str();
+            cout<< "reply: "<<reply<<"\n";
 
             char *cstr = new char[reply.length() + 1];
             strcpy(cstr, reply.c_str());
@@ -194,18 +217,18 @@ void read_input_file(int sockfd)
 
             /////////////////////////////////////////////////////////////////////////////
 
-            string file_name = data[1];
+           //  file_name = data[1];
             //file_name.erase(0,1);
-            cout << "requested file : "<<file_name<<endl;
+           // cout << "requested file : "<<file_name<<endl;
 
-            int fd = get_file_descriptor (file_name);
-            cout << "file descriptor : "<<fd<<endl;
+            //fd = get_file_descriptor (file_name);
+            //cout << "file descriptor : "<<fd<<endl;
             if(fd!=FILE_NOT_FOUND_DESC)
             {
                 // file is found
 
-                long file_size = get_file_size(fd);
-                cout << "file size : "<<file_size<<endl;
+                //long file_size = get_file_size(fd);
+                //cout << "file size : "<<file_size<<endl;
 
                 off_t offset = 0;
                 int remain_data = file_size;
@@ -216,7 +239,13 @@ void read_input_file(int sockfd)
                     remain_data -= sent_bytes;
                     fprintf(stdout, " sent  = %d bytes, offset : %d, remaining data = %d\n",
                             sent_bytes, offset, remain_data);
+
+                    if(remain_data<MAXDATASIZE){
+                        sendfile(sockfd, fd, &offset, remain_data);
+                    }
                 }
+
+
 
             }
         }
@@ -271,8 +300,13 @@ void read_input_file(int sockfd)
                     fwrite(buf, sizeof(char), numbytes, recieved_file);
                     //remain_data -= len;
                     fprintf(stdout, "Receive %d bytes\n", numbytes);
+
+                    if(numbytes < MAXDATASIZE)
+                        break;
                 }
+
                 fclose(recieved_file);
+                cout<<"client after while\n";
             }
             else
             {
@@ -284,7 +318,8 @@ void read_input_file(int sockfd)
         {
             cout<<"error"<<"\n";
         }
-    }
+        usleep(1000000);
+   }
 
     file.close();
 }
@@ -310,7 +345,7 @@ int main(int argc, char *argv[])
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    if ((rv = getaddrinfo("127.0.0.1","3490", &hints, &servinfo)) != 0)
+    if ((rv = getaddrinfo("127.0.0.1","8080", &hints, &servinfo)) != 0)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;

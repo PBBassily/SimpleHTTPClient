@@ -1,1 +1,6 @@
-GET simp.png host-name (port-number)
+GET simp.png host-name
+GET mark.jpeg host-name
+GET background.jpeg host-name
+POST index.html host-name
+GET mark.jpeg host-name
+GET mark.jpeg host-name
