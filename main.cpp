@@ -20,7 +20,7 @@
 #include <sys/sendfile.h>
 #include <fcntl.h>
 
-#define MAXDATASIZE 1000 // max number of bytes we can get at once
+#define MAXDATASIZE 1024 // max number of bytes we can get at once
 
 #define FILE_NOT_FOUND_DESC -1
 
@@ -85,6 +85,52 @@ void save_get_file(char buffer[])
         s.erase(0, pos + delimiter.length());
     }
     std::cout << s << std::endl;
+}
+
+
+/**
+    @param file name of found file & size
+    @return the OK -200- HTTP reply
+*/
+
+int get_file_size_from_header(char buffer[])
+{
+    int length = strlen(buffer);
+    int file_size=0;
+    string line = "";
+
+    for(int i = 0 ; i < length ; i++)
+    {
+        if(buffer[i] == ' ' || buffer[i] == '\r' || buffer[i] == '\n')
+        {
+
+            if( (line.compare("Content-Length:")) == 0)
+            {
+                line = "";
+                i++;
+
+                while(buffer[i] != '\r')
+                {
+                    line+= buffer[i];
+                    i++;
+                }
+
+                file_size = stoi(line);
+
+                return file_size;
+            }
+
+            line = "";
+        }
+        else
+        {
+            line+=buffer[i];
+        }
+
+    }
+
+    return -1;
+
 }
 
 bool check_response(char buffer[])
@@ -239,15 +285,19 @@ void read_input_file(int sockfd)
                     remain_data -= sent_bytes;
                     fprintf(stdout, " sent  = %d bytes, offset : %d, remaining data = %d\n",
                             sent_bytes, offset, remain_data);
-
+                    usleep(500);
                     if(remain_data<MAXDATASIZE){
                         sendfile(sockfd, fd, &offset, remain_data);
                     }
                 }
 
+                close(fd);
+
 
 
             }
+
+            usleep(1000000);
         }
         else if((data[0].compare("GET")) == 0)
         {
@@ -293,16 +343,53 @@ void read_input_file(int sockfd)
 
                     exit(EXIT_FAILURE);
                 }
-
+                int remain_data = get_file_size_from_header(buf);
+                cout<<"remain: "<<remain_data<<endl;
                 int numbytes ;
-                while ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) > 0)
+              /*  while (remain>0 &&(numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) > 0)
                 {
                     fwrite(buf, sizeof(char), numbytes, recieved_file);
-                    //remain_data -= len;
+                    remain -= numbytes;
                     fprintf(stdout, "Receive %d bytes\n", numbytes);
 
-                    if(numbytes < MAXDATASIZE)
+
+                }*/
+                 //timeval timeout = { 3, 0 };
+                //fd_set in_set;
+
+                while ( remain_data > 0)
+                {
+                    timeval timeout = { 3, 0 };
+                    fd_set in_set;
+
+                    FD_ZERO(&in_set);
+                    FD_SET(sockfd, &in_set);
+
+                    // select the set
+                    int cnt = select(sockfd + 1, &in_set, NULL, NULL, &timeout);
+
+                    /////////////////////////////////////////////////////////////////////////
+                    if (FD_ISSET(sockfd, &in_set))
+                    {
+                        numbytes = recv(sockfd, buf, MAXDATASIZE, 0);
+                        if (numbytes <= 0)
+                        {
+                            // nothing received from client
+                            cout<< "nothing received from client \n";
+                            break;
+                        }
+                        fwrite(buf, sizeof(char), numbytes, recieved_file);
+                        remain_data -= numbytes;
+                        fprintf(stdout, "Remain %d bytes\n", remain_data);
+
+                    }
+                    else
+                    {
+                        // nothing received from client in last 5 seconds
+                        cout << "nothing received from client in last 3 seconds\n";
                         break;
+                    }
+
                 }
 
                 fclose(recieved_file);
@@ -312,13 +399,14 @@ void read_input_file(int sockfd)
             {
                 cout<<"////////////////////////////////////////////////////";
             }
-
+            /***/
+        usleep(1000000);
         }
         else
         {
             cout<<"error"<<"\n";
         }
-        usleep(1000000);
+
    }
 
     file.close();
@@ -345,7 +433,7 @@ int main(int argc, char *argv[])
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    if ((rv = getaddrinfo("127.0.0.1","8080", &hints, &servinfo)) != 0)
+    if ((rv = getaddrinfo("192.168.1.133","3490", &hints, &servinfo)) != 0)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;
@@ -384,16 +472,6 @@ int main(int argc, char *argv[])
 
     freeaddrinfo(servinfo); // all done with this structure
 
-    /*
-        if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-            perror("recv");
-            exit(1);
-        }
-
-        buf[numbytes] = '\0';
-
-        printf("client: received '%s'\n",buf);
-    */
 
     read_input_file(sockfd);
 
