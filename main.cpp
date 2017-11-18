@@ -2,6 +2,7 @@
     this is the simple http client
     @author mphilip
     @author PBBassily
+    @author peterDuck
 */
 
 #include <iostream>
@@ -23,8 +24,9 @@
 #include <fcntl.h>
 
 #define MAXDATASIZE 1024 // max number of bytes we can get at once
-
-#define FILE_NOT_FOUND_DESC -1
+#define INTER_COMMAND_INTERVAL 1000000 // 1 sec
+#define INTER_PACKET_INTERVAL 500 // 500 microsecond
+#define FILE_NOT_FOUND_DESC -1 // file not found descriptor value
 
 using namespace std;
 
@@ -245,7 +247,7 @@ void post_request(vector<string> data, int sockfd)
 
             fprintf(stdout, " sent  = %d bytes, offset : %d, remaining data = %d\n",
                     sent_bytes, offset, remain_data);
-            usleep(500);
+            usleep(INTER_PACKET_INTERVAL);
 
         }
 
@@ -375,13 +377,13 @@ void read_input_file(int sockfd)
             {
 
                 post_request(data,sockfd);
-                usleep(1000000);
+                usleep(INTER_COMMAND_INTERVAL);
             }
             else if((data[0].compare("GET")) == 0)
             {
 
                 get_request(data,sockfd);
-                usleep(1000000);
+                usleep(INTER_COMMAND_INTERVAL);
             }
             else
             {
