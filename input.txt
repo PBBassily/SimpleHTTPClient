@@ -1,6 +1,0 @@
-POST index.html host-name
-POST post2.txt host-name
-GET simp.png host-name
-POST bg.jpeg host-name
-POST mark2.jpeg host-name
-GET bg.jpeg host-name

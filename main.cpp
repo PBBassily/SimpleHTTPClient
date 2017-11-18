@@ -1,7 +1,9 @@
 /**
     this is the simple http client
     @author mphilip
+    @author PBBassily
 */
+
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +27,11 @@
 #define FILE_NOT_FOUND_DESC -1
 
 using namespace std;
+
+string server_ip;
+
+string port_number;
+
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -45,14 +52,11 @@ vector<string> parse_line(string temp)
     char buffer[1024];
     strcpy(buffer, temp.c_str());
     int length = strlen(buffer);
-
     string line="";
-
     vector<string> data;
 
     for(int i = 0 ; i < length ; i++)
     {
-
         if(buffer[i] == ' ')
         {
             data.push_back(line);
@@ -66,27 +70,6 @@ vector<string> parse_line(string temp)
     }
     return data;
 }
-
-void save_get_file(char buffer[])
-{
-
-    int length = strlen(buffer);
-    string line = "";
-    int count_n = 0;
-    std::string s (buffer);
-    std::string delimiter = "\r\n";
-
-    size_t pos = 0;
-    std::string token;
-    while ((pos = s.find(delimiter)) != std::string::npos)
-    {
-        token = s.substr(0, pos);
-        std::cout <<"token:"<< token << std::endl;
-        s.erase(0, pos + delimiter.length());
-    }
-    std::cout << s << std::endl;
-}
-
 
 /**
     @param file name of found file & size
@@ -133,6 +116,10 @@ int get_file_size_from_header(char buffer[])
 
 }
 
+/**
+    check if the returned response is 200 or 404
+    @param buffer the received data
+*/
 bool check_response(char buffer[])
 {
 
@@ -161,23 +148,10 @@ bool check_response(char buffer[])
     return false;
 }
 
-char* read_post_file(string name)
-{
-    std::ifstream file(name.c_str());
-    std::string str;
-    string data = "";
-    while (std::getline(file, str))
-    {
-        data+= str;
-    }
-
-    char *cstr = new char[data.length() + 1];
-    strcpy(cstr, data.c_str());
-    file.close();
-    return cstr;
-
-}
-
+/**
+    this function to get the size of the file
+    @param fd the file descriptor
+*/
 long get_file_size(int fd)
 {
     struct stat stat_buf;
@@ -196,244 +170,264 @@ int get_file_descriptor(string file_name)
     return open(cstr, O_RDONLY);
 }
 
+/**
+    create the post input format line
+    @param file_name the name of the post file
+    @param file_size the size of the post file
+*/
+string make_post_request_format(string file_name, int file_size)
+{
+    // create a reply post request
+    stringstream  ss;
+    ss.str("");
+    ss<<"POST /";
+    ss<<file_name;
+    ss<<" http/1.1\r\n";
+    ss<<"Content-Length: " ;
+    ss<<file_size;
+    ss<<"\r\n";
+    string reply = ss.str();
+    cout<< "reply: "<<reply<<"\n";
+    return reply;
+}
+/**
+    this function responsible for the post request
+    @param data the vector contains the input line
+    @param sockfd the socket number
+*/
+void post_request(vector<string> data, int sockfd)
+{
+    string file_name = data[1];
 
+    int fd = get_file_descriptor (file_name);
 
+    long file_size = get_file_size(fd);
 
+    cout << "file size : "<<file_size<<endl;
+
+    string reply = make_post_request_format(file_name,file_size);
+
+    char *cstr = new char[reply.length() + 1];
+
+    strcpy(cstr, reply.c_str());
+
+    // send the post request
+    if (send(sockfd, cstr, strlen(cstr), 0) == -1)
+        perror("send");
+
+    // receive ok
+    int numbytes;
+    char buf[MAXDATASIZE];
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1)
+    {
+        perror("recv");
+        exit(1);
+    }
+
+    buf[numbytes] = '\0';
+
+    printf("client: received '%s'\n",buf);
+
+    if(fd!=FILE_NOT_FOUND_DESC)
+    {
+
+        off_t offset = 0;
+        int remain_data = file_size;
+        size_t sent_bytes = 0;
+
+        /* Sending file data */
+        while (((sent_bytes = sendfile(sockfd, fd, &offset, MAXDATASIZE)) > 0) && (remain_data > 0))
+        {
+            remain_data -= sent_bytes;
+
+            if(sent_bytes == -1)
+                break;
+
+            fprintf(stdout, " sent  = %d bytes, offset : %d, remaining data = %d\n",
+                    sent_bytes, offset, remain_data);
+            usleep(500);
+
+        }
+
+        close(fd);
+    }
+
+}
 
 /**
+    this function responsible for the get request
+    @param data the vector contains the input line
+    @param sockfd the socket number
+*/
+void get_request(vector<string> data, int sockfd)
+{
+    string reply = "GET /"+data[1]+" http/1.1\r\n";
+
+    cout<< reply<<"\n";
+
+    char *cstr = new char[reply.length() + 1];
+
+    strcpy(cstr, reply.c_str());
+
+    // send the post request
+    if (send(sockfd, cstr, strlen(cstr), 0) == -1)
+        perror("send");
+
+    // receive the get
+    int numbytes;
+    char buf[MAXDATASIZE];
+    if ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) == -1)
+    {
+        perror("recv");
+        exit(1);
+    }
+
+    buf[numbytes] = '\0';
+
+    printf("client: received '%s'\n",buf);
+
+    if(check_response(buf))
+    {
+        FILE * recieved_file ;
+
+        string path = data[1];
+
+        char *file_name = new char[path.length() + 1];
+
+        strcpy(file_name, path.c_str());
+
+        recieved_file = fopen(file_name, "w");
+
+        if (recieved_file == NULL)
+        {
+            fprintf(stderr, "Failed to open file foo --> %s\n", strerror(errno));
+
+            exit(EXIT_FAILURE);
+        }
+
+        int remain_data = get_file_size_from_header(buf);
+
+        cout<<"remain: "<<remain_data<<endl;
+        int numbytes ;
+
+        while ( remain_data > 0)
+        {
+            timeval timeout = { 3, 0 };
+            fd_set in_set;
+
+            FD_ZERO(&in_set);
+            FD_SET(sockfd, &in_set);
+
+            // select the set
+            int cnt = select(sockfd + 1, &in_set, NULL, NULL, &timeout);
+
+            if (FD_ISSET(sockfd, &in_set))
+            {
+                numbytes = recv(sockfd, buf, MAXDATASIZE, 0);
+
+                if (numbytes <= 0)
+                {
+                    // nothing received from client
+                    cout<< "nothing received from client \n";
+                    break;
+                }
+                fwrite(buf, sizeof(char), numbytes, recieved_file);
+                remain_data -= numbytes;
+                fprintf(stdout, "Remain %d bytes\n", remain_data);
+
+            }
+            else
+            {
+                // nothing received from client in last 5 seconds
+                cout << "nothing received from client in last 3 seconds\n";
+                break;
+            }
+
+        }
+
+        fclose(recieved_file);
+    }
+    else
+    {
+        cout<<"FILE NOT FOUND 404\n";
+    }
+}
+/**
     this function read the input file and parse it
+    @param sockfd the socket file descriptor that will connect to it
 
 */
 void read_input_file(int sockfd)
 {
-    std::ifstream file("input.txt");
+    std::ifstream file("input.txt"); // read the input file
+
     std::string str;
+
     while (std::getline(file, str))
     {
-        vector<string> data = parse_line(str);
-
-        cout<<"data[1]: "<<data[1]<<"\n";
-
-
-
-        if((data[0].compare("POST")) == 0)
+        if(!str.empty())
         {
-    ///////////////////////////////////////////////////////////////////////////////////////
-            string file_name = data[1];
+            vector<string> data = parse_line(str);
 
-            int fd = get_file_descriptor (file_name);
+            cout<<"data[1]: "<<data[1]<<"\n";
 
-            long file_size = get_file_size(fd);
-
-            cout << "file size : "<<file_size<<endl;
-
-
-
-            // create a reply post request
-            stringstream  ss;
-            ss.str("");
-            ss<<"POST /";
-            ss<<data[1];
-            ss<<" http/1.1\r\n";
-            ss<<"Content-Length: " ;
-            ss<<file_size;
-            ss<<"\r\n";
-            string reply = ss.str();
-            cout<< "reply: "<<reply<<"\n";
-
-            char *cstr = new char[reply.length() + 1];
-            strcpy(cstr, reply.c_str());
-
-            // send the post request
-            if (send(sockfd, cstr, strlen(cstr), 0) == -1)
-                perror("send");
-
-            // receive ok
-            int numbytes;
-            char buf[MAXDATASIZE];
-            if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1)
+            if((data[0].compare("POST")) == 0)
             {
-                perror("recv");
-                exit(1);
+
+                post_request(data,sockfd);
+                usleep(1000000);
             }
-
-            buf[numbytes] = '\0';
-
-            printf("client: received '%s'\n",buf);
-
-            /////////////////////////////////////////////////////////////////////////////
-
-           //  file_name = data[1];
-            //file_name.erase(0,1);
-           // cout << "requested file : "<<file_name<<endl;
-
-            //fd = get_file_descriptor (file_name);
-            //cout << "file descriptor : "<<fd<<endl;
-            if(fd!=FILE_NOT_FOUND_DESC)
+            else if((data[0].compare("GET")) == 0)
             {
-                // file is found
 
-                //long file_size = get_file_size(fd);
-                //cout << "file size : "<<file_size<<endl;
-
-                off_t offset = 0;
-                int remain_data = file_size;
-                size_t sent_bytes = 0;
-                /* Sending file data */
-                while (((sent_bytes = sendfile(sockfd, fd, &offset, MAXDATASIZE)) > 0) && (remain_data > 0))
-                {
-                    remain_data -= sent_bytes;
-                    fprintf(stdout, " sent  = %d bytes, offset : %d, remaining data = %d\n",
-                            sent_bytes, offset, remain_data);
-                    usleep(500);
-                    if(remain_data<MAXDATASIZE){
-                        sendfile(sockfd, fd, &offset, remain_data);
-                    }
-                }
-
-                close(fd);
-
-
-
-            }
-
-            usleep(1000000);
-        }
-        else if((data[0].compare("GET")) == 0)
-        {
-            cout<<"get"<<"\n";
-
-            string reply = "GET /"+data[1]+" http/1.1\r\n";
-
-            cout<< reply<<"\n";
-
-            char *cstr = new char[reply.length() + 1];
-            strcpy(cstr, reply.c_str());
-
-            // send the post request
-            if (send(sockfd, cstr, strlen(cstr), 0) == -1)
-                perror("send");
-
-            // receive the get
-            int numbytes;
-            char buf[MAXDATASIZE];
-            if ((numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) == -1)
-            {
-                perror("recv");
-                exit(1);
-            }
-
-            buf[numbytes] = '\0';
-
-            printf("client: received '%s'\n",buf);
-
-            if(check_response(buf))
-            {
-                cout<<"****************************************************";
-                FILE * recieved_file ;
-                string path = data[1];
-                char *file_name = new char[path.length() + 1];
-                strcpy(file_name, path.c_str());
-
-                recieved_file = fopen(file_name, "w");
-
-                if (recieved_file == NULL)
-                {
-                    fprintf(stderr, "Failed to open file foo --> %s\n", strerror(errno));
-
-                    exit(EXIT_FAILURE);
-                }
-                int remain_data = get_file_size_from_header(buf);
-                cout<<"remain: "<<remain_data<<endl;
-                int numbytes ;
-              /*  while (remain>0 &&(numbytes = recv(sockfd, buf, MAXDATASIZE, 0)) > 0)
-                {
-                    fwrite(buf, sizeof(char), numbytes, recieved_file);
-                    remain -= numbytes;
-                    fprintf(stdout, "Receive %d bytes\n", numbytes);
-
-
-                }*/
-                 //timeval timeout = { 3, 0 };
-                //fd_set in_set;
-
-                while ( remain_data > 0)
-                {
-                    timeval timeout = { 3, 0 };
-                    fd_set in_set;
-
-                    FD_ZERO(&in_set);
-                    FD_SET(sockfd, &in_set);
-
-                    // select the set
-                    int cnt = select(sockfd + 1, &in_set, NULL, NULL, &timeout);
-
-                    /////////////////////////////////////////////////////////////////////////
-                    if (FD_ISSET(sockfd, &in_set))
-                    {
-                        numbytes = recv(sockfd, buf, MAXDATASIZE, 0);
-                        if (numbytes <= 0)
-                        {
-                            // nothing received from client
-                            cout<< "nothing received from client \n";
-                            break;
-                        }
-                        fwrite(buf, sizeof(char), numbytes, recieved_file);
-                        remain_data -= numbytes;
-                        fprintf(stdout, "Remain %d bytes\n", remain_data);
-
-                    }
-                    else
-                    {
-                        // nothing received from client in last 5 seconds
-                        cout << "nothing received from client in last 3 seconds\n";
-                        break;
-                    }
-
-                }
-
-                fclose(recieved_file);
-                cout<<"client after while\n";
+                get_request(data,sockfd);
+                usleep(1000000);
             }
             else
             {
-                cout<<"////////////////////////////////////////////////////";
+                cout<<"NO POST OR GET FOUND"<<"\n";
             }
-            /***/
-        usleep(1000000);
         }
         else
         {
-            cout<<"error"<<"\n";
+            cout<<"\n empty line found \n";
         }
 
-   }
+    }
 
     file.close();
 }
+
+
 /**
-    the main method
+    this function responsible for creating the connection between the server and client with the given ip address and port number
+    @param argc the number of the parameters in the input command line
+    @param argv the parameters of the command line
 */
-int main(int argc, char *argv[])
+int create_connection(int argc, char *argv[])
 {
     int sockfd, numbytes;
     char buf[MAXDATASIZE];
     struct addrinfo hints, *servinfo, *p;
     int rv;
     char s[INET6_ADDRSTRLEN];
-    //string port_number = argv[2];
 
-    /* if (argc != 3)
-     {
-         fprintf(stderr,"usage: client server_iP port_number\n");
-         exit(1);
-     }*/
+
+    // check the format of the input
+    if (argc != 3)
+    {
+        fprintf(stderr,"usage: client server_iP port_number\n");
+        exit(1);
+    }
+
+    server_ip = argv[0];
+    port_number = argv[1];
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    if ((rv = getaddrinfo("192.168.1.133","3490", &hints, &servinfo)) != 0)
+    if ((rv = getaddrinfo(argv[1],argv[2], &hints, &servinfo)) != 0)
     {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;
@@ -472,10 +466,18 @@ int main(int argc, char *argv[])
 
     freeaddrinfo(servinfo); // all done with this structure
 
-
-    read_input_file(sockfd);
+    read_input_file(sockfd); // read the input file
 
     close(sockfd);
+
+}
+
+/**
+    the main method
+*/
+int main(int argc, char *argv[])
+{
+    create_connection(argc,argv);
 
     return 0;
 }
