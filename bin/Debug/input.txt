@@ -1,1 +1,9 @@
-POST post.html host-name (port-number)
+POST index.html host-name
+POST post2.txt host-name
+GET ggg.png host-name
+
+
+
+
+POST mark2.jpeg host-name
+GET mark2.jpeg host-name
