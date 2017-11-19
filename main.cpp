@@ -217,6 +217,8 @@ void post_request(vector<string> data, int sockfd)
     if (send(sockfd, cstr, strlen(cstr), 0) == -1)
         perror("send");
 
+    usleep(INTER_PACKET_INTERVAL);
+
     // receive ok
     int numbytes;
     char buf[MAXDATASIZE];
@@ -355,6 +357,7 @@ void get_request(vector<string> data, int sockfd)
     }
 }
 /**
+
     this function read the input file and parse it
     @param sockfd the socket file descriptor that will connect to it
 
@@ -470,6 +473,18 @@ int create_connection(int argc, char *argv[])
 
     read_input_file(sockfd); // read the input file
 
+    string reply = "finish the connection";
+
+    char *cstr = new char[reply.length() + 1];
+
+    strcpy(cstr, reply.c_str());
+
+    // send the post request
+    if (send(sockfd, cstr, strlen(cstr), 0) == -1)
+        perror("send");
+
+    usleep(INTER_PACKET_INTERVAL);
+
     close(sockfd);
 
 }
@@ -483,3 +498,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+

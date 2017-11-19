@@ -1,9 +1,4 @@
-POST index.html host-name
-POST post2.txt host-name
-GET ggg.png host-name
-
-
-
-
-POST mark2.jpeg host-name
-GET mark2.jpeg host-name
+GET simp2.png host-name  
+GET mark222.jpeg host-name  
+GET mark23.jpeg host-name  
+GET background4.jpeg host-name  
