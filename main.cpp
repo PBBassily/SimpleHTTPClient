@@ -217,6 +217,8 @@ void post_request(vector<string> data, int sockfd)
     if (send(sockfd, cstr, strlen(cstr), 0) == -1)
         perror("send");
 
+    usleep(INTER_PACKET_INTERVAL);
+
     // receive ok
     int numbytes;
     char buf[MAXDATASIZE];
@@ -480,6 +482,8 @@ int create_connection(int argc, char *argv[])
     // send the post request
     if (send(sockfd, cstr, strlen(cstr), 0) == -1)
         perror("send");
+
+    usleep(INTER_PACKET_INTERVAL);
 
     close(sockfd);
 
